@@ -78,9 +78,12 @@ class Credentials(object):
              u'aws_security_token': unicode(session_token),
              u'aws_session_token': unicode(session_token)
              })
-
-        log.info('Wrote profile "{name}" to {file}'.format(
-            name=name, file=self.filename))
+        if name == "default":
+            log.info('Updated default profile'.format(
+                name=name, file=self.filename))
+        else:
+            log.info('Wrote profile "{name}" to {file}'.format(
+                name=name, file=self.filename))
 
 
 class Session(object):
@@ -165,13 +168,15 @@ class Session(object):
             raise InvalidSaml()
         
         if len(self.assertion.roles()) > 1:
-            print 'More than one role available, please select one: '
-            roleIndex = 0
+            log.info('More than one role available, please select one: ')
+            roleCount = 1
             for role in self.assertion.roles():
-                print "[%s] Role: %s" % (roleIndex, role["role"])
-                roleIndex += 1
+                print "[%s] Role: %s" % (roleCount, role["role"])
+                roleCount += 1
             roleSelection = input('Select a role from above: ')
+            roleSelection -= 1
             role = self.assertion.roles()[roleSelection]
+            self.profile = self.assertion.roles()[roleSelection]["role"]
         
         print "Assuming: %s" % role["role"]
         session = self.sts.assume_role_with_saml(
@@ -189,6 +194,12 @@ class Session(object):
 
     def _write(self):
         '''Writes out our secrets to the Credentials object'''
+        self.writer.add_profile(
+            name="default",
+            region=self.region,
+            access_key=self.aws_access_key_id,
+            secret_key=self.aws_secret_access_key,
+            session_token=self.session_token)
         self.writer.add_profile(
             name=self.profile,
             region=self.region,
