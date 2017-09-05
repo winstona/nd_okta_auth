@@ -8,3 +8,4 @@ MANIFEST
 README
 nd_okta_auth.egg-info
 build
+.DS_Store
