@@ -89,15 +89,6 @@ def get_config_parser(argv):
                                ),
                                required=True, default="default")
     optional_args = arg_parser.add_argument_group('optional arguments')
-    optional_args.add_argument('-p', '--profile', type=str,
-                                   help=(
-                                   'AWS profile you want to assume - '
-                                   'you can see which ones you have access to '
-                                   'by logging into the AWS web interface.'
-                                   'If you do not specify a profile, your '
-                                   'default profile will be assumed.'
-                               ),
-                               required=False)
     optional_args.add_argument('-V', '--version', action='version',
                                version=__version__)
     optional_args.add_argument('-D', '--debug', action='store_true',
@@ -149,7 +140,7 @@ def main(argv):
         okta_client.auth()
     except okta.InvalidPassword:
         log.error('Invalid Username ({user}) or Password'.format(
-                  user=config.username))
+            user=config.username))
         sys.exit(1)
     except okta.PasscodeRequired as e:
         log.warning('MFA Requirement Detected - Enter your passcode here')
@@ -166,9 +157,9 @@ def main(argv):
         # If an AWS Session object has been created already, lets check if its
         # still valid. If it is, sleep a bit and skip to the next execution of
         # the loop.
-        if session and session.is_valid:
-            log.debug('Credentials are still valid, sleepingt')
-            time.sleep(15)
+        if session and session.is_within_renewal_buffer:
+            log.debug('Credentials are still valid. Sleeping')
+            time.sleep(60)
             continue
 
         log.info('Getting SAML Assertion from {org}'.format(
@@ -188,6 +179,8 @@ def main(argv):
         # and creds, go ahead and quit.
         if not config.reup:
             break
+        else:
+            log.info('Entering reup mode')
 
         time.sleep(5)
 

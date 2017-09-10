@@ -81,7 +81,7 @@ class TestSesssion(unittest.TestCase):
         with mock.patch('datetime.datetime') as dt_mock:
             dt_mock.utcnow.return_value = mock_now
             dt_mock.strptime.return_value = expir_mock
-            ret = session.is_valid
+            ret = session.is_within_renewal_buffer
 
         self.assertEquals(False, ret)
 
@@ -97,6 +97,6 @@ class TestSesssion(unittest.TestCase):
         with mock.patch('datetime.datetime') as dt_mock:
             dt_mock.utcnow.return_value = mock_now
             dt_mock.strptime.return_value = expir_mock
-            ret = session.is_valid
+            ret = session.is_within_renewal_buffer
 
         self.assertEquals(True, ret)

@@ -1,4 +1,4 @@
-'''
+"""
 aws
 ^^^
 
@@ -9,7 +9,7 @@ Credits: This code base was almost entirely stolen from
 https://github.com/ThoughtWorksInc/aws_role_credentials. It continues to be
 modified from the original code, but thanks a ton to the original writers at
 Thought Works Inc.
-'''
+"""
 
 import boto3
 import configparser
@@ -17,6 +17,7 @@ import datetime
 import logging
 import os
 import xml
+import json
 
 from os.path import expanduser
 
@@ -26,20 +27,19 @@ log = logging.getLogger(__name__)
 
 
 class BaseException(Exception):
-    '''Base AWS SAML Exception'''
+    """Base AWS SAML Exception"""
 
 
 class InvalidSaml(BaseException):
-    '''Raised when the SAML Assertion is invalid for some reason'''
+    """Raised when the SAML Assertion is invalid for some reason"""
 
 
 class Credentials(object):
-
-    '''Simple AWS Credentials Profile representation.
+    """Simple AWS Credentials Profile representation.
 
     This object reads in an Amazon ~/.aws/credentials file, and then allows you
     to write out credentials into different Profile sections.
-    '''
+    """
 
     def __init__(self, filename):
         self.filename = filename
@@ -59,7 +59,7 @@ class Credentials(object):
             config.write(configfile)
 
     def add_profile(self, name, region, access_key, secret_key, session_token):
-        '''Writes out a set of AWS Credentials to disk.
+        """Writes out a set of AWS Credentials to disk.
 
         args:
             name: The profile name to write to
@@ -67,7 +67,7 @@ class Credentials(object):
             access_key: The AWS_ACCESS_KEY_ID
             secret_key: The AWS_SECRET_ACCESS_KEY
             session_token: The AWS_SESSION_TOKEN
-        '''
+        """
         name = unicode(name)
         self._add_profile(
             name,
@@ -86,9 +86,37 @@ class Credentials(object):
                 name=name, file=self.filename))
 
 
-class Session(object):
+class ExpirationRecord(object):
+    """Simple on-disk file to record session expiration time
+    """
 
-    '''Amazon Federated Session Generator.
+    def __init__(self, filename):
+        self.filename = filename
+
+    def _write_expiration(self, expiration_time):
+        try:
+            with open(self.filename, 'r') as outfile:
+                json.dump(expiration_time, outfile)
+        except IOError:
+            pass
+
+    def write_expiration(self, name):
+        """Writes expiration out to disk
+        """
+        name = unicode(name)
+        self._write_expiration(
+            name,
+            {u'region': unicode(region),
+             u'output': u'json',
+             u'expiration_time': unicode(expiration_time)
+             })
+        log.info("Wrote expiration time to to {file}".format(
+            name=name, file=self.filename))
+
+
+
+class Session(object):
+    """Amazon Federated Session Generator.
 
     This class is used to contact Amazon with a specific SAML Assertion and
     get back a set of temporary Federated credentials. These credentials are
@@ -96,7 +124,7 @@ class Session(object):
 
     This object is meant to be used once -- as SAML Assertions are one-time-use
     objects.
-    '''
+    """
 
     def __init__(self,
                  assertion,
@@ -110,7 +138,7 @@ class Session(object):
         boto_logger.setLevel(logging.WARNING)
 
         if not os.path.exists(cred_dir):
-            log.info('Creating missing AWS Credentials dir {dir}'.format(
+            log.info('Creating AWS credential dir {dir}'.format(
                 dir=cred_dir))
             os.makedirs(cred_dir)
 
@@ -129,56 +157,61 @@ class Session(object):
         self.expiration = None
 
     @property
-    def is_valid(self):
-        '''Returns True if the Session is still valid.
+    def is_within_renewal_buffer(self):
+        """Returns True if the Session is still valid.
 
         Takes the current time (in UTC) and compares it to the Expiration time
         returned by Amazon. Adds a 10 minute buffer to make sure that we start
         working to renew the creds far before they really expire and break.
 
-        Args:
-            now: A datetime.datetime() object (likely
-            datetime.datetime.utcnow())
-            buffer: Number of seconds before the actual expiration before we
-            start returning false.
-
-        Returns:
-            Bool
-        '''
-        # Consider the tokens expired when they have 10m left
-        buffer = datetime.timedelta(seconds=600)
+        Consider the tokens expired when they have 10m left
+        """
+        renewal_buffer = datetime.timedelta(seconds=600)
         now = datetime.datetime.utcnow()
-        expir = datetime.datetime.strptime(str(self.expiration),
-                                           '%Y-%m-%d %H:%M:%S+00:00')
+        expiration_time = datetime.datetime.strptime(str(self.expiration),
+                                                     '%Y-%m-%d %H:%M:%S+00:00')
 
-        return (now + buffer) < expir
+        return (now + renewal_buffer) < expiration_time
+
+    @property
+    def is_session_valid(self):
+        """Returns True if the Session is still valid.
+
+        Takes the current time (in UTC) and compares it to the Expiration time
+        returned by Amazon.
+        """
+        now = datetime.datetime.utcnow()
+        expiration_time = datetime.datetime.strptime(str(self.expiration),
+                                                     '%Y-%m-%d %H:%M:%S+00:00')
+
+        return now < expiration_time
 
     def assume_role(self):
-        '''Use the SAML Assertion to actually get the credentials.
+        """Use the SAML Assertion to actually get the credentials.
 
         Uses the supplied (one time use!) SAML Assertion to go out to Amazon
         and get back a set of temporary credentials. These are written out to
         disk and can be used for an hour before they need to be replaced.
-        '''
+        """
         try:
             role = self.assertion.roles()[0]
         except xml.etree.ElementTree.ParseError:
             log.error('Could not find any Role in the SAML assertion')
             log.error(self.assertion.__dict__)
             raise InvalidSaml()
-        
+
         if len(self.assertion.roles()) > 1:
             log.info('More than one role available, please select one: ')
-            roleCount = 1
+            role_count = 1
             for role in self.assertion.roles():
-                print "[%s] Role: %s" % (roleCount, role["role"])
-                roleCount += 1
-            roleSelection = input('Select a role from above: ')
-            roleSelection -= 1
-            role = self.assertion.roles()[roleSelection]
-            self.profile = self.assertion.roles()[roleSelection]["role"]
-        
-        print "Assuming: %s" % role["role"]
+                print "[%s] Role: %s" % (role_count, role["role"])
+                role_count += 1
+            role_selection = input('Select a role from above: ')
+            role_selection -= 1
+            role = self.assertion.roles()[role_selection]
+            self.profile = self.assertion.roles()[role_selection]["role"]
+
+        log.info('Assuming: %s' % role["role"])
         session = self.sts.assume_role_with_saml(
             RoleArn=role['role'],
             PrincipalArn=role['principle'],
@@ -193,7 +226,7 @@ class Session(object):
         self._write()
 
     def _write(self):
-        '''Writes out our secrets to the Credentials object'''
+        """Writes out our secrets to the Credentials object"""
         self.writer.add_profile(
             name="default",
             region=self.region,
