@@ -150,21 +150,11 @@ def main(argv):
             verified = okta_client.validate_mfa(e.fid, e.state_token, passcode)
 
     # Once we're authenticated with an OktaSaml client object, we can use that
-    # object to get a fresh SAMLResponse repeatedly and refresh our AWS
-    # Credentials.
+    # object to get a SAMLResponse repeatedly and refresh our AWS credentials.
     session = None
-    while True:
-        # If an AWS Session object has been created already, lets check if its
-        # still valid. If it is, sleep a bit and skip to the next execution of
-        # the loop.
-        if session and session.is_within_renewal_buffer:
-            log.debug('Credentials are still valid. Sleeping')
-            time.sleep(60)
-            continue
-
-        log.info('Getting SAML Assertion from {org}'.format(
-            org=config.org))
-
+    has_run_once = False
+    while config.reup or not has_run_once:
+        log.info('Getting SAML Assertion from {org}'.format(org=config.org))
         try:
             assertion = okta_client.get_assertion(appid=config.appid,
                                                   apptype='amazon_aws')
@@ -173,16 +163,16 @@ def main(argv):
         except requests.exceptions.ConnectionError as e:
             log.warning('Connection error... will retry')
             time.sleep(5)
-            continue
-
         # If we're not running in re-up mode, once we have the assertion
         # and creds, go ahead and quit.
-        if not config.reup:
-            break
-        else:
+        if not has_run_once:
+            has_run_once = True
+        if config.reup:
             log.info('Entering reup mode')
-
-        time.sleep(5)
+            while session.is_within_renewal_buffer:
+                log.info('Session is still valid. Waiting 60 seconds to check again.')
+                time.sleep(60)
+    log.info('Exiting.')
 
 
 def entry_point():
