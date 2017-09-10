@@ -44,7 +44,7 @@ class PasscodeRequired(BaseException):
 
 
 class OktaVerifyRequired(BaseException):
-    '''OktaVerify Authentication Is Required'''
+    '''Okta Verify Authentication Is Required'''
 
 
 class Okta(object):
@@ -64,13 +64,14 @@ class Okta(object):
         log.debug('Base URL Set to: {url}'.format(url=self.base_url))
 
         # Validate the inputs are reasonably sane
-        for input in (organization, username, password):
-            if (input == '' or input is None):
+        for user_input in (organization, username, password):
+            if user_input == '' or user_input is None:
                 raise EmptyInput()
 
         self.username = username
         self.password = password
         self.session = requests.Session()
+        self.session_token = None
 
     def _request(self, path, data=None):
         '''Basic URL Fetcher for Okta
@@ -112,10 +113,10 @@ class Okta(object):
             ret: The response from Okta that we know is successful and contains
             a sessionToken
         '''
-        firstName = ret['_embedded']['user']['profile']['firstName']
-        lastName = ret['_embedded']['user']['profile']['lastName']
+        first_name = ret['_embedded']['user']['profile']['firstName']
+        last_name = ret['_embedded']['user']['profile']['lastName']
         log.info('Successfully authed {firstName} {lastName}'.format(
-            firstName=firstName, lastName=lastName))
+            firstName=first_name, lastName=last_name))
         self.session_token = ret['sessionToken']
 
     def validate_mfa(self, fid, state_token, passcode):
