@@ -168,10 +168,13 @@ def main(argv):
         if not has_run_once:
             has_run_once = True
         if config.reup:
-            log.info('Entering reup mode')
-            while session.is_within_renewal_buffer:
-                log.info('Session is still valid. Waiting 60 seconds to check again.')
-                time.sleep(60)
+            log.info('Entering reup mode. Interrupt process to switch roles.')
+            try:
+                while session.is_within_renewal_buffer:
+                    log.info('Session is valid. Rechecking in 60s.')
+                    time.sleep(60)
+            except KeyboardInterrupt:
+                log.info('Keyboard interrupt received, re-prompting for role..')
     log.info('Exiting.')
 
 

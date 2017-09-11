@@ -86,35 +86,6 @@ class Credentials(object):
                 name=name, file=self.filename))
 
 
-class ExpirationRecord(object):
-    """Simple on-disk file to record session expiration time
-    """
-
-    def __init__(self, filename):
-        self.filename = filename
-
-    def _write_expiration(self, expiration_time):
-        try:
-            with open(self.filename, 'r') as outfile:
-                json.dump(expiration_time, outfile)
-        except IOError:
-            pass
-
-    def write_expiration(self, name):
-        """Writes expiration out to disk
-        """
-        name = unicode(name)
-        self._write_expiration(
-            name,
-            {u'region': unicode(region),
-             u'output': u'json',
-             u'expiration_time': unicode(expiration_time)
-             })
-        log.info("Wrote expiration time to to {file}".format(
-            name=name, file=self.filename))
-
-
-
 class Session(object):
     """Amazon Federated Session Generator.
 
@@ -172,6 +143,13 @@ class Session(object):
                                                      '%Y-%m-%d %H:%M:%S+00:00')
 
         return (now + renewal_buffer) < expiration_time
+
+    @property
+    def get_expiration(self):
+        """ Returns session expiration time"""
+        expiration_time = datetime.datetime.strptime(str(self.expiration),
+                                                     '%Y-%m-%d %H:%M:%S+00:00')
+        return expiration_time
 
     @property
     def is_session_valid(self):
