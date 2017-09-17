@@ -17,7 +17,6 @@ import datetime
 import logging
 import os
 import xml
-import json
 
 from os.path import expanduser
 
@@ -126,6 +125,7 @@ class Session(object):
         self.aws_secret_access_key = None
         self.aws_session_token = None
         self.expiration = None
+        self.role_selection = None
 
     @property
     def is_within_renewal_buffer(self):
@@ -145,11 +145,12 @@ class Session(object):
         return (now + renewal_buffer) < expiration_time
 
     @property
-    def get_expiration(self):
+    def get_time_until_expiration(self):
         """ Returns session expiration time"""
         expiration_time = datetime.datetime.strptime(str(self.expiration),
                                                      '%Y-%m-%d %H:%M:%S+00:00')
-        return expiration_time
+        time_until_expiration = expiration_time - datetime.datetime.utcnow()
+        return time_until_expiration
 
     @property
     def is_session_valid(self):
@@ -171,6 +172,7 @@ class Session(object):
         and get back a set of temporary credentials. These are written out to
         disk and can be used for an hour before they need to be replaced.
         """
+        global role_selection
         try:
             role = self.assertion.roles()[0]
         except xml.etree.ElementTree.ParseError:
@@ -182,14 +184,45 @@ class Session(object):
             log.info('More than one role available, please select one: ')
             role_count = 1
             for role in self.assertion.roles():
-                print "[%s] Role: %s" % (role_count, role["role"])
+                print "[%s] Role: %s" % (role_count, role["role"][13:])
                 role_count += 1
             role_selection = input('Select a role from above: ')
             role_selection -= 1
             role = self.assertion.roles()[role_selection]
             self.profile = self.assertion.roles()[role_selection]["role"]
 
-        log.info('Assuming: %s' % role["role"])
+        log.info('Assuming: %s' % role["role"][13:])
+        session = self.sts.assume_role_with_saml(
+            RoleArn=role['role'],
+            PrincipalArn=role['principle'],
+            SAMLAssertion=self.assertion.encode())
+        creds = session['Credentials']
+
+        self.aws_access_key_id = creds['AccessKeyId']
+        self.aws_secret_access_key = creds['SecretAccessKey']
+        self.session_token = creds['SessionToken']
+        self.expiration = creds['Expiration']
+        self.role_selection = role_selection
+
+        self._write()
+
+    def assume_last_used_role(self):
+        """Use the SAML Assertion to actually get the credentials.
+
+        Uses the supplied (one time use!) SAML Assertion to go out to Amazon
+        and get back a set of temporary credentials. These are written out to
+        disk and can be used for an hour before they need to be replaced.
+        """
+        try:
+            role = self.assertion.roles()[self.role_selection]
+        except xml.etree.ElementTree.ParseError:
+            log.error('Could not find any Role in the SAML assertion')
+            log.error(self.assertion.__dict__)
+            raise InvalidSaml()
+
+        self.profile = self.assertion.roles()[self.role_selection]["role"]
+
+        log.info('Assuming: %s' % role["role"][13:])
         session = self.sts.assume_role_with_saml(
             RoleArn=role['role'],
             PrincipalArn=role['principle'],
@@ -212,7 +245,7 @@ class Session(object):
             secret_key=self.aws_secret_access_key,
             session_token=self.session_token)
         self.writer.add_profile(
-            name=self.profile,
+            name=self.profile[13:],
             region=self.region,
             access_key=self.aws_access_key_id,
             secret_key=self.aws_secret_access_key,

@@ -158,8 +158,14 @@ def main(argv):
         try:
             assertion = okta_client.get_assertion(appid=config.appid,
                                                   apptype='amazon_aws')
-            session = aws.Session(assertion, profile=config.name)
-            session.assume_role()
+            if has_run_once:
+                session.assume_last_used_role()
+            else:
+                session = aws.Session(assertion, profile=config.name)
+                session.assume_role()
+        except KeyboardInterrupt:
+            log.info('Exiting.')
+            sys.exit(1)
         except requests.exceptions.ConnectionError as e:
             log.warning('Connection error... will retry')
             time.sleep(5)
@@ -174,6 +180,7 @@ def main(argv):
                     log.info('Session is valid. Rechecking in 60s.')
                     time.sleep(60)
             except KeyboardInterrupt:
+                has_run_once = False
                 log.info('Keyboard interrupt received, re-prompting for role..')
     log.info('Exiting.')
 
