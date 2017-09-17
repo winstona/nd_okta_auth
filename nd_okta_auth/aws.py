@@ -125,7 +125,6 @@ class Session(object):
         self.aws_secret_access_key = None
         self.aws_session_token = None
         self.expiration = None
-        self.role_selection = None
 
     @property
     def is_within_renewal_buffer(self):
@@ -172,7 +171,6 @@ class Session(object):
         and get back a set of temporary credentials. These are written out to
         disk and can be used for an hour before they need to be replaced.
         """
-        global role_selection
         try:
             role = self.assertion.roles()[0]
         except xml.etree.ElementTree.ParseError:

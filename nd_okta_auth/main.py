@@ -159,6 +159,7 @@ def main(argv):
             assertion = okta_client.get_assertion(appid=config.appid,
                                                   apptype='amazon_aws')
             if has_run_once:
+                session = aws.Session(assertion, profile=config.name)
                 session.assume_last_used_role()
             else:
                 session = aws.Session(assertion, profile=config.name)
