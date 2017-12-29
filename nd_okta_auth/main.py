@@ -158,11 +158,15 @@ def main(argv):
         try:
             assertion = okta_client.get_assertion(appid=config.appid,
                                                   apptype='amazon_aws')
-            if has_run_once:
+            if not session:
                 session = aws.Session(assertion, profile=config.name)
+            else:
+                session.update_assertion(assertion)
+
+            if has_run_once:
+                #session = aws.Session(assertion, profile=config.name)
                 session.assume_last_used_role()
             else:
-                session = aws.Session(assertion, profile=config.name)
                 session.assume_role()
         except KeyboardInterrupt:
             log.info('Exiting.')

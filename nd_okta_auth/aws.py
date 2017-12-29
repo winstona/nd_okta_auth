@@ -165,6 +165,10 @@ class Session(object):
 
         return now < expiration_time
 
+    def update_assertion(self, assertion):
+        self.assertion = models.SamlAssertion(assertion)
+        return
+        
     def assume_role(self):
         """Use the SAML Assertion to actually get the credentials.
 
