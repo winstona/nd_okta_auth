@@ -168,7 +168,7 @@ class Session(object):
     def update_assertion(self, assertion):
         self.assertion = models.SamlAssertion(assertion)
         return
-        
+
     def assume_role(self):
         """Use the SAML Assertion to actually get the credentials.
 
@@ -189,7 +189,12 @@ class Session(object):
             for role in self.assertion.roles():
                 print "[%s] Role: %s" % (role_count, role["role"][13:])
                 role_count += 1
-            role_selection = input('Select a role from above: ')
+            while True:
+                try:
+                    role_selection = input('Select a role from above: ')
+                except SyntaxError:
+                    continue
+                break
             role_selection -= 1
             role = self.assertion.roles()[role_selection]
             self.profile = self.assertion.roles()[role_selection]["role"]
