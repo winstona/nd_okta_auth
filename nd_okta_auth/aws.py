@@ -17,7 +17,6 @@ import datetime
 import logging
 import os
 import xml
-
 from os.path import expanduser
 
 from aws_role_credentials import models
@@ -186,8 +185,13 @@ class Session(object):
         if len(self.assertion.roles()) > 1:
             log.info('More than one role available, please select one: ')
             role_count = 1
-            for role in self.assertion.roles():
-                print "[%s] Role: %s" % (role_count, role["role"][13:])
+            self.all_roles = self.assertion.roles()
+            self.all_roles.append({'principle': '', 'role': 'ALL'})
+            for role in self.all_roles:
+                if role["role"] == 'ALL':
+                    print "[%s] Role: %s" % (role_count, role["role"])
+                else:
+                    print "[%s] Role: %s" % (role_count, role["role"][13:])
                 role_count += 1
             while True:
                 try:
@@ -196,23 +200,24 @@ class Session(object):
                     continue
                 break
             role_selection -= 1
-            role = self.assertion.roles()[role_selection]
-            self.profile = self.assertion.roles()[role_selection]["role"]
+            role = self.all_roles[role_selection]
 
-        log.info('Assuming: %s' % role["role"][13:])
-        session = self.sts.assume_role_with_saml(
-            RoleArn=role['role'],
-            PrincipalArn=role['principle'],
-            SAMLAssertion=self.assertion.encode())
-        creds = session['Credentials']
+            if role["role"] == 'ALL':
+                while True:
+                    try:
+                        self.default_role_selection = input('Select a role to use as default: ')
+                    except SyntaxError:
+                        continue
+                    break
+                self.default_role_selection -= 1
 
-        self.aws_access_key_id = creds['AccessKeyId']
-        self.aws_secret_access_key = creds['SecretAccessKey']
-        self.session_token = creds['SessionToken']
-        self.expiration = creds['Expiration']
-        self.role_selection = role_selection
+        if role_selection:
+            self.role_selection = role_selection
+        else:
+            self.role_selection = 0
 
-        self._write()
+        self.choose_roles_to_update(self.role_selection)
+
 
     def assume_last_used_role(self):
         """Use the SAML Assertion to actually get the credentials.
@@ -221,14 +226,30 @@ class Session(object):
         and get back a set of temporary credentials. These are written out to
         disk and can be used for an hour before they need to be replaced.
         """
+        self.all_roles = self.assertion.roles()
+        self.all_roles.append({'principle': '', 'role': 'ALL'})
+
+        self.choose_roles_to_update(self.role_selection)
+
+    def choose_roles_to_update(self, role_selection):
         try:
-            role = self.assertion.roles()[self.role_selection]
+            role = self.all_roles[role_selection]
         except xml.etree.ElementTree.ParseError:
             log.error('Could not find any Role in the SAML assertion')
             log.error(self.assertion.__dict__)
             raise InvalidSaml()
 
-        self.profile = self.assertion.roles()[self.role_selection]["role"]
+        if role['role'] == 'ALL':
+            for role in self.all_roles[:-1]:
+                log.info("iterating through role: " + role['role'])
+                self.get_role_and_write_creds(role)
+            log.info("setting default role: " + self.all_roles[self.default_role_selection]['role'])
+            self.get_role_and_write_creds(self.all_roles[self.default_role_selection])
+        else:
+            self.get_role_and_write_creds(role)
+
+    def get_role_and_write_creds(self, role):
+        self.profile = role["role"]
 
         log.info('Assuming: %s' % role["role"][13:])
         session = self.sts.assume_role_with_saml(
